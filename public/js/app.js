@@ -1,0 +1,603 @@
+const state = {
+  user: null,
+  currentDate: new Date(),
+  viewMode: "list", // "list" = semua jadwal, "daily" = per tanggal
+  searchQuery: "",
+  filterTags: [],
+};
+
+const TAG_CLASS = {};
+const TAG_PILL_COLOR = {};
+const DISPOSISI_OPTIONS = [
+  "Dipelajari/Dicermati",
+  "Ditindaklanjuti",
+  "Agar Dimonitor",
+  "Dikoordinasikan",
+  "Segera Buat Laporan",
+  "Siapkan Bahan",
+  "Bahas Dengan Saya",
+  "Saran/Penjelasan",
+  "Siapkan Jawaban",
+  "Copy untuk Saya",
+  "Dipedomani",
+  "Untuk Diketahui",
+  "File/Simpan/Arsip",
+  "Agendakan",
+  "Mendampingi Kepala",
+  "Mewakili Kepala",
+];
+
+async function api(path, method = "GET", body) {
+  const res = await fetch(path, {
+    method,
+    headers: body ? { "Content-Type": "application/json" } : {},
+    body: body ? JSON.stringify(body) : undefined,
+  });
+  const data = await res.json().catch(() => ({}));
+  if (!res.ok) throw new Error(data.error || `Terjadi kesalahan (${res.status})`);
+  return data;
+}
+
+async function apiUpload(path, file) {
+  const formData = new FormData();
+  formData.append("file", file);
+  const res = await fetch(path, { method: "POST", body: formData });
+  const data = await res.json().catch(() => ({}));
+  if (!res.ok) throw new Error(data.error || `Gagal mengunggah file (${res.status})`);
+  return data;
+}
+
+function toast(msg) {
+  const el = document.getElementById("toast");
+  el.textContent = msg;
+  el.classList.remove("hidden");
+  setTimeout(() => el.classList.add("hidden"), 2500);
+}
+
+function fmtDate(d) {
+  const y = d.getFullYear();
+  const m = String(d.getMonth() + 1).padStart(2, "0");
+  const day = String(d.getDate()).padStart(2, "0");
+  return `${y}-${m}-${day}`;
+}
+function fmtDateLabel(d) {
+  return d.toLocaleDateString("id-ID", { weekday: "long", day: "numeric", month: "long", year: "numeric" });
+}
+function escapeHtml(str) {
+  const div = document.createElement("div");
+  div.textContent = str;
+  return div.innerHTML;
+}
+function formatFileSize(bytes) {
+  if (bytes < 1024) return `${bytes} B`;
+  if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(1)} KB`;
+  return `${(bytes / (1024 * 1024)).toFixed(1)} MB`;
+}
+function roleLabel(role) {
+  return { sekretaris: "Sekretaris", kepala: "Kepala Sekretariat" }[role] || role;
+}
+function greetingWord() {
+  const h = new Date().getHours();
+  if (h < 11) return "pagi";
+  if (h < 15) return "siang";
+  if (h < 19) return "sore";
+  return "malam";
+}
+function filterItems(items) {
+  let result = items;
+  if (state.searchQuery) {
+    const q = state.searchQuery;
+    result = result.filter(
+      (i) =>
+        (i.asalSurat || "").toLowerCase().includes(q) ||
+        (i.keterangan || "").toLowerCase().includes(q) ||
+        (i.noSurat || "").toLowerCase().includes(q) ||
+        (i.noDisposisi || "").toLowerCase().includes(q)
+    );
+  }
+  if (state.filterTags.length > 0) {
+    result = result.filter((i) => (i.tags || []).some((t) => state.filterTags.includes(t)));
+  }
+  return result;
+}
+async function loadStats() {
+  const { items } = await api("/api/agenda");
+  const todayStr = fmtDate(new Date());
+  const in7 = new Date();
+  in7.setDate(in7.getDate() + 7);
+  const in7Str = fmtDate(in7);
+
+  const totalToday = items.filter((i) => i.tanggal === todayStr).length;
+  const totalDocs = items.reduce((sum, i) => sum + (i.attachments || []).length, 0);
+  const upcoming = items.filter((i) => i.tanggal > todayStr && i.tanggal <= in7Str).length;
+
+  document.getElementById("statToday").textContent = totalToday;
+  document.getElementById("statDocs").textContent = totalDocs;
+  document.getElementById("statUpcoming").textContent = upcoming;
+}
+
+// ---------- Bootstrap ----------
+async function boot() {
+  try {
+    const { user } = await api("/api/me");
+    state.user = user;
+    showApp();
+  } catch {
+    showLogin();
+  }
+}
+
+function showLogin() {
+  document.getElementById("loginView").classList.remove("hidden");
+  document.getElementById("appView").classList.add("hidden");
+}
+
+async function showApp() {
+  document.getElementById("loginView").classList.add("hidden");
+  document.getElementById("appView").classList.remove("hidden");
+  document.getElementById("userName").textContent = state.user.name;
+  document.getElementById("userRole").textContent = roleLabel(state.user.role);
+  document.getElementById("addAgendaBtn").classList.toggle("hidden", state.user.role !== "sekretaris");
+
+  document.getElementById("greetingText").textContent = `Selamat ${greetingWord()}, ${state.user.name} 👋`;
+  document.getElementById("todayDateText").textContent = fmtDateLabel(new Date());
+  document.getElementById("avatarInitial").textContent = (state.user.name || "?").charAt(0).toUpperCase();
+
+  await refreshAgendaView();
+}
+
+// ---------- View mode ----------
+function refreshAgendaView() {
+  loadStats();
+  return state.viewMode === "list" ? loadAgendaList() : loadAgenda();
+}
+
+function switchViewMode(mode) {
+  state.viewMode = mode;
+  document.getElementById("viewListBtn").classList.toggle("active", mode === "list");
+  document.getElementById("viewDailyBtn").classList.toggle("active", mode === "daily");
+  document.getElementById("listViewWrap").classList.toggle("hidden", mode !== "list");
+  document.getElementById("dailyViewWrap").classList.toggle("hidden", mode !== "daily");
+  refreshAgendaView();
+}
+
+function relativeDayLabel(dateStr) {
+  const d = new Date(dateStr + "T00:00:00");
+  const today = new Date();
+  today.setHours(0, 0, 0, 0);
+  const diffDays = Math.round((d - today) / 86400000);
+  const full = fmtDateLabel(d);
+  let labelPart;
+  if (diffDays === 0) labelPart = "Hari Ini";
+  else if (diffDays === 1) labelPart = "Besok";
+  else if (diffDays === -1) labelPart = "Kemarin";
+  else if (diffDays > 1) labelPart = `${diffDays} hari lagi`;
+  else labelPart = `${Math.abs(diffDays)} hari lalu`;
+  return `📅 ${labelPart} • ${full}`;
+}
+
+function scrollToTodayOrNearest(behavior) {
+  const todayEl = document.querySelector(".date-group-today");
+  if (todayEl) return todayEl.scrollIntoView({ behavior, block: "start" });
+  const next = Array.from(document.querySelectorAll(".date-group")).find((g) => !g.classList.contains("date-group-past"));
+  if (next) next.scrollIntoView({ behavior, block: "start" });
+}
+
+// ---------- Daily view ----------
+async function loadAgenda() {
+  document.getElementById("dateLabel").textContent = fmtDateLabel(state.currentDate);
+  const { items: rawItems } = await api(`/api/agenda?tanggal=${fmtDate(state.currentDate)}`);
+  const items = filterItems(rawItems);
+  const grid = document.getElementById("agendaGrid");
+  const empty = document.getElementById("emptyState");
+  grid.innerHTML = "";
+  if (items.length === 0) {
+    empty.classList.remove("hidden");
+    return;
+  }
+  empty.classList.add("hidden");
+  items.forEach((item, idx) => grid.appendChild(renderCard(item, idx + 1)));
+}
+
+// ---------- List view (semua jadwal, lalu & akan datang) ----------
+async function loadAgendaList() {
+  const { items: rawItems } = await api("/api/agenda");
+  const items = filterItems(rawItems);
+  const emptyEl = document.getElementById("listEmptyState");
+  const jumpBtn = document.getElementById("jumpTodayBtn");
+  const container = document.getElementById("agendaListContainer");
+  container.innerHTML = "";
+
+  if (items.length === 0) {
+    emptyEl.classList.remove("hidden");
+    jumpBtn.classList.add("hidden");
+    return;
+  }
+  emptyEl.classList.add("hidden");
+  jumpBtn.classList.remove("hidden");
+
+  const groups = [];
+  items.forEach((item) => {
+    const last = groups[groups.length - 1];
+    if (!last || last.tanggal !== item.tanggal) groups.push({ tanggal: item.tanggal, items: [item] });
+    else last.items.push(item);
+  });
+
+  const todayStr = fmtDate(new Date());
+  groups.forEach((group) => {
+    const section = document.createElement("div");
+    section.className = "date-group";
+    if (group.tanggal === todayStr) section.classList.add("date-group-today");
+    if (group.tanggal < todayStr) section.classList.add("date-group-past");
+
+    const header = document.createElement("div");
+    header.className = "date-group-header";
+    header.textContent = relativeDayLabel(group.tanggal);
+    section.appendChild(header);
+
+    const grid = document.createElement("div");
+    grid.className = "agenda-grid";
+    group.items.forEach((item, idx) => grid.appendChild(renderCard(item, idx + 1)));
+    section.appendChild(grid);
+
+    container.appendChild(section);
+  });
+
+  requestAnimationFrame(() => scrollToTodayOrNearest("auto"));
+}
+
+// ---------- Card rendering ----------
+function renderCard(item, num) {
+  const card = document.createElement("div");
+  const primaryTagClass = item.tags.map((t) => TAG_CLASS[t]).find(Boolean);
+  card.className = "agenda-card" + (primaryTagClass ? " " + primaryTagClass : "");
+  card.dataset.id = item.id;
+
+  const canEdit = state.user.role === "sekretaris";
+
+  card.innerHTML = `
+    ${canEdit ? '<button class="close-x" title="Hapus">&times;</button>' : ""}
+    <span class="agenda-num">${num}</span>
+    <span class="agenda-time">🕐 ${item.jam}</span>
+    <p><span class="label">Asal Surat:</span> <strong>${escapeHtml(item.asalSurat)}</strong></p>
+    <p><span class="label">Ket:</span> ${escapeHtml(item.keterangan)}</p>
+    <div class="tags-row">
+      ${item.tags.map((t) => `<span class="tag-pill ${TAG_PILL_COLOR[t] || ""}">${t}</span>`).join("")}
+      ${item.noDisposisi ? `<span class="tag-pill pill-disposisi">No. Disposisi: ${escapeHtml(item.noDisposisi)}</span>` : ""}
+    </div>
+    ${item.noSurat ? `<div class="no-surat-row">${escapeHtml(item.noSurat)}</div>` : ""}
+    <div class="attachments-list"></div>
+    <div class="card-actions"></div>
+  `;
+
+  renderAttachments(card, item, canEdit);
+  const actions = card.querySelector(".card-actions");
+
+  if (canEdit) {
+    const editBtn = document.createElement("button");
+    editBtn.textContent = "Edit";
+    editBtn.onclick = () => openAgendaModal(item);
+    actions.appendChild(editBtn);
+
+    card.querySelector(".close-x").onclick = async () => {
+      if (!confirm("Hapus agenda ini?")) return;
+      await api(`/api/agenda-item?id=${item.id}`, "DELETE");
+      toast("Agenda dihapus");
+      refreshAgendaView();
+    };
+  }
+
+
+  if (canEdit) {
+    const uploadBtn = document.createElement("button");
+    uploadBtn.textContent = "📎 Upload PDF";
+    const fileInput = document.createElement("input");
+    fileInput.type = "file";
+    fileInput.accept = ".pdf,application/pdf";
+    fileInput.className = "hidden";
+    fileInput.onchange = async () => {
+      if (!fileInput.files.length) return;
+      try {
+        uploadBtn.disabled = true;
+        uploadBtn.textContent = "Mengunggah...";
+        await apiUpload(`/api/attachment-upload?agendaId=${item.id}`, fileInput.files[0]);
+        toast("File berhasil diunggah");
+        refreshAgendaView();
+      } catch (e) {
+        alert(e.message);
+        uploadBtn.disabled = false;
+        uploadBtn.textContent = "📎 Upload PDF";
+      }
+    };
+    uploadBtn.onclick = () => fileInput.click();
+    actions.appendChild(uploadBtn);
+    actions.appendChild(fileInput);
+  }
+
+  return card;
+}
+
+function renderAttachments(card, item, canEdit) {
+  const wrap = card.querySelector(".attachments-list");
+  const attachments = item.attachments || [];
+  if (attachments.length === 0) return;
+
+  wrap.innerHTML = attachments
+    .map(
+      (a) => `
+      <div class="attachment-row" data-att-id="${a.id}">
+        <span>📄</span>
+        <span class="attachment-name" title="${escapeHtml(a.name)}">${escapeHtml(a.name)}</span>
+        <span class="attachment-size">${formatFileSize(a.size)}</span>
+        <button class="attachment-action attachment-view">👁 Lihat</button>
+        ${canEdit ? `<button class="attachment-del" title="Hapus file">&times;</button>` : ""}
+      </div>`
+    )
+    .join("");
+
+  wrap.querySelectorAll(".attachment-view").forEach((btn) => {
+    const row = btn.closest(".attachment-row");
+    const attId = row.dataset.attId;
+    const attachment = attachments.find((a) => a.id === attId);
+    btn.onclick = () => openPdfViewer(item, attachment);
+  });
+
+  if (canEdit) {
+    wrap.querySelectorAll(".attachment-del").forEach((btn) => {
+      const row = btn.closest(".attachment-row");
+      const attId = row.dataset.attId;
+      btn.onclick = async () => {
+        if (!confirm("Hapus file ini?")) return;
+        await api("/api/attachment-delete", "POST", { agendaId: item.id, fileId: attId });
+        toast("File dihapus");
+        refreshAgendaView();
+      };
+    });
+  }
+}
+
+function openPdfViewer(item, attachment) {
+  const backdrop = document.createElement("div");
+  backdrop.className = "modal-backdrop";
+  backdrop.innerHTML = `
+    <div class="modal-card pdf-viewer-card">
+      <div class="pdf-viewer-header">
+        <span class="pdf-viewer-title" title="${escapeHtml(attachment.name)}">📄 ${escapeHtml(attachment.name)}</span>
+        <button class="ghost-btn">Tutup</button>
+      </div>
+      <iframe class="pdf-viewer-frame" src="/api/attachment-view?agendaId=${item.id}&fileId=${attachment.id}" title="${escapeHtml(attachment.name)}"></iframe>
+    </div>
+  `;
+  document.body.appendChild(backdrop);
+  const close = () => backdrop.remove();
+  backdrop.querySelector(".ghost-btn").onclick = close;
+  backdrop.addEventListener("click", (e) => { if (e.target === backdrop) close(); });
+}
+
+// ---------- Agenda modal (add/edit) ----------
+function setupTagsDropdown(container) {
+  const trigger = container.querySelector(".multiselect-trigger");
+  const panel = container.querySelector(".multiselect-panel");
+  const summary = container.querySelector(".multiselect-summary");
+  const checkboxes = Array.from(panel.querySelectorAll('input[type="checkbox"]'));
+
+  function updateSummary() {
+    const selected = checkboxes.filter((c) => c.checked).map((c) => c.value);
+    summary.textContent = selected.length ? selected.join(", ") : "Pilih opsi";
+  }
+
+  function closePanel() {
+    panel.classList.add("hidden");
+    trigger.classList.remove("open");
+    document.removeEventListener("click", handleOutsideClick);
+  }
+  function openPanel() {
+    panel.classList.remove("hidden");
+    trigger.classList.add("open");
+    document.addEventListener("click", handleOutsideClick);
+  }
+  function handleOutsideClick(e) {
+    if (!container.contains(e.target)) closePanel();
+  }
+
+  trigger.onclick = (e) => {
+    e.stopPropagation();
+    if (panel.classList.contains("hidden")) openPanel();
+    else closePanel();
+  };
+  checkboxes.forEach((cb) => cb.addEventListener("change", updateSummary));
+  updateSummary();
+
+  return {
+    getSelected: () => checkboxes.filter((c) => c.checked).map((c) => c.value),
+    destroy: () => document.removeEventListener("click", handleOutsideClick),
+  };
+}
+
+function openAgendaModal(existing) {
+  const isEdit = !!existing;
+  const backdrop = document.createElement("div");
+  backdrop.className = "modal-backdrop";
+  backdrop.innerHTML = `
+    <div class="modal-card">
+      <h3>${isEdit ? "Edit Agenda" : "Tambah Agenda"}</h3>
+      <label>Tanggal</label>
+      <input type="date" id="mTanggal" value="${isEdit ? existing.tanggal : fmtDate(state.currentDate)}" />
+      <label>Jam</label>
+      <input type="time" id="mJam" value="${isEdit ? existing.jam : "08:00"}" />
+      <label>Asal Surat</label>
+      <input type="text" id="mAsal" value="${isEdit ? escapeHtml(existing.asalSurat) : ""}" placeholder="Contoh: LAN" />
+      <label>Keterangan</label>
+      <textarea id="mKet" placeholder="Contoh: Diklat PKN 1. Via Zoom">${isEdit ? escapeHtml(existing.keterangan) : ""}</textarea>
+      <label>No. Disposisi <span class="optional-label">(opsional)</span></label>
+      <input type="text" id="mNoDisposisi" value="${isEdit ? escapeHtml(existing.noDisposisi || "") : ""}" placeholder="Contoh: 5836" />
+      <label>No. Surat <span class="optional-label">(opsional)</span></label>
+      <input type="text" id="mNoSurat" value="${isEdit ? escapeHtml(existing.noSurat || "") : ""}" placeholder="Contoh: B-17434/Dt.07.02/PP.08/08/2026" />
+      <label>Disposisi</label>
+      <div class="multiselect" id="mTagsSelect">
+        <button type="button" class="multiselect-trigger" id="mTagsTrigger">
+          <span class="multiselect-summary" id="mTagsSummary">Pilih opsi</span>
+          <span class="multiselect-arrow">▾</span>
+        </button>
+        <div class="multiselect-panel hidden" id="mTagsPanel">
+          ${DISPOSISI_OPTIONS.map(
+            (t) =>
+              `<label class="multiselect-option"><input type="checkbox" value="${t}" ${isEdit && existing.tags.includes(t) ? "checked" : ""}/> ${t}</label>`
+          ).join("")}
+        </div>
+      </div>
+      <div class="modal-actions">
+        <button class="ghost-btn" id="mCancel">Batal</button>
+        <button class="primary-btn" id="mSave">Simpan</button>
+      </div>
+    </div>
+  `;
+  document.body.appendChild(backdrop);
+
+  const tagsSelect = setupTagsDropdown(backdrop.querySelector("#mTagsSelect"));
+
+  backdrop.querySelector("#mCancel").onclick = () => {
+    tagsSelect.destroy();
+    backdrop.remove();
+  };
+
+  backdrop.querySelector("#mSave").onclick = async () => {
+    const payload = {
+      tanggal: backdrop.querySelector("#mTanggal").value,
+      jam: backdrop.querySelector("#mJam").value,
+      asalSurat: backdrop.querySelector("#mAsal").value.trim(),
+      keterangan: backdrop.querySelector("#mKet").value.trim(),
+      noDisposisi: backdrop.querySelector("#mNoDisposisi").value.trim(),
+      noSurat: backdrop.querySelector("#mNoSurat").value.trim(),
+      tags: tagsSelect.getSelected(),
+    };
+    if (!payload.tanggal || !payload.jam || !payload.asalSurat || !payload.keterangan) {
+      alert("Mohon lengkapi semua field.");
+      return;
+    }
+    try {
+      if (isEdit) {
+        await api(`/api/agenda-item?id=${existing.id}`, "PUT", payload);
+        toast("Agenda diperbarui");
+      } else {
+        await api("/api/agenda", "POST", payload);
+        toast("Agenda ditambahkan");
+      }
+      tagsSelect.destroy();
+      backdrop.remove();
+      state.currentDate = new Date(payload.tanggal + "T00:00:00");
+      refreshAgendaView();
+    } catch (e) {
+      alert(e.message);
+    }
+  };
+}
+
+// ---------- Event bindings ----------
+document.getElementById("loginForm").addEventListener("submit", async (e) => {
+  e.preventDefault();
+  const errEl = document.getElementById("loginError");
+  errEl.classList.add("hidden");
+  try {
+    const { user } = await api("/api/login", "POST", {
+      username: document.getElementById("loginUsername").value.trim(),
+      password: document.getElementById("loginPassword").value,
+    });
+    state.user = user;
+    showApp();
+  } catch (err) {
+    errEl.textContent = err.message;
+    errEl.classList.remove("hidden");
+  }
+});
+
+document.getElementById("logoutBtn").addEventListener("click", async () => {
+  await api("/api/logout", "POST");
+  state.user = null;
+  window.location.href = "/";
+});
+
+document.getElementById("addAgendaBtn").addEventListener("click", () => openAgendaModal(null));
+document.getElementById("viewListBtn").addEventListener("click", () => switchViewMode("list"));
+document.getElementById("viewDailyBtn").addEventListener("click", () => switchViewMode("daily"));
+document.getElementById("jumpTodayBtn").addEventListener("click", () => scrollToTodayOrNearest("smooth"));
+
+document.getElementById("prevDay").addEventListener("click", () => {
+  state.currentDate.setDate(state.currentDate.getDate() - 1);
+  loadAgenda();
+});
+document.getElementById("nextDay").addEventListener("click", () => {
+  state.currentDate.setDate(state.currentDate.getDate() + 1);
+  loadAgenda();
+});
+document.getElementById("todayBtn").addEventListener("click", () => {
+  state.currentDate = new Date();
+  loadAgenda();
+});
+
+// ---------- Sidebar buka/tutup ----------
+document.getElementById("sidebarToggleBtn").addEventListener("click", () => {
+  document.querySelector(".app-shell").classList.toggle("sidebar-collapsed");
+});
+
+// ---------- User menu dropdown ----------
+(function setupUserMenu() {
+  const trigger = document.getElementById("userMenuTrigger");
+  const panel = document.getElementById("userMenuPanel");
+  function close() {
+    panel.classList.add("hidden");
+    document.removeEventListener("click", onOutside);
+  }
+  function open() {
+    panel.classList.remove("hidden");
+    document.addEventListener("click", onOutside);
+  }
+  function onOutside(e) {
+    if (!trigger.parentElement.contains(e.target)) close();
+  }
+  trigger.addEventListener("click", (e) => {
+    e.stopPropagation();
+    panel.classList.contains("hidden") ? open() : close();
+  });
+})();
+
+// ---------- Filter panel (berdasarkan tag) ----------
+(function setupFilterPanel() {
+  const btn = document.getElementById("filterBtn");
+  const panel = document.getElementById("filterPanel");
+  function close() {
+    panel.classList.add("hidden");
+    document.removeEventListener("click", onOutside);
+  }
+  function open() {
+    panel.classList.remove("hidden");
+    document.addEventListener("click", onOutside);
+  }
+  function onOutside(e) {
+    if (!btn.parentElement.contains(e.target)) close();
+  }
+  btn.addEventListener("click", (e) => {
+    e.stopPropagation();
+    panel.classList.contains("hidden") ? open() : close();
+  });
+
+  document.querySelectorAll(".filterTagChk").forEach((chk) => {
+    chk.addEventListener("change", () => {
+      state.filterTags = Array.from(document.querySelectorAll(".filterTagChk:checked")).map((c) => c.value);
+      refreshAgendaView();
+    });
+  });
+  document.getElementById("filterClearBtn").addEventListener("click", () => {
+    document.querySelectorAll(".filterTagChk").forEach((c) => (c.checked = false));
+    state.filterTags = [];
+    refreshAgendaView();
+  });
+})();
+
+// ---------- Search ----------
+document.getElementById("searchInput").addEventListener("input", (e) => {
+  state.searchQuery = e.target.value.trim().toLowerCase();
+  refreshAgendaView();
+});
+
+boot();
