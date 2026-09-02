@@ -10,7 +10,7 @@
   --text-mute: #6b7280;
 }
 * { box-sizing: border-box; }
-body { margin: 0; font-family: "Segoe UI", system-ui, sans-serif; background: var(--gray-bg); color: var(--text); }
+body { margin: 0; font-family: "Segoe UI", system-ui, sans-serif; background: var(--gray-bg); color: var(--text); overflow-x: hidden; }
 .hidden { display: none !important; }
 
 /* ---------- LOGIN ---------- */
@@ -179,6 +179,8 @@ body { margin: 0; font-family: "Segoe UI", system-ui, sans-serif; background: va
 /* ---------- RESPONSIVE ---------- */
 @media (max-width: 900px) {
   .agenda-grid { grid-template-columns: 1fr; }
+  .date-label { min-width: 0; }
+  .date-nav { flex-wrap: wrap; }
 }
 @media (max-width: 640px) {
   .content { padding: 12px; margin: 10px; border-radius: 12px; }
@@ -186,8 +188,13 @@ body { margin: 0; font-family: "Segoe UI", system-ui, sans-serif; background: va
   .date-label { font-size: 14px; min-width: 0; }
   .agenda-grid { grid-template-columns: 1fr; gap: 10px; }
   .agenda-card { padding: 12px 14px; }
+  .close-x { padding: 6px; font-size: 18px; top: 4px; right: 6px; line-height: 1; }
   .card-actions { flex-direction: column; align-items: stretch; }
-  .card-actions button, .card-actions select { width: 100%; text-align: center; }
+  .card-actions button, .card-actions select { width: 100%; text-align: center; padding: 10px; }
+  /* Nama file PDF panjang wajib dipaksa jadi baris sendiri & boleh wrap,
+     supaya tidak mendorong lebar kartu keluar layar (bug utama sebelumnya) */
+  .attachment-row { flex-wrap: wrap; }
+  .attachment-name { flex-basis: 100%; min-width: 0; white-space: normal; word-break: break-word; order: -1; }
   .modal-card { width: 92vw; padding: 18px; max-height: 88vh; overflow-y: auto; }
   .modal-actions { flex-direction: column-reverse; }
   .modal-actions button { width: 100%; }
@@ -369,10 +376,10 @@ body { margin: 0; font-family: "Segoe UI", system-ui, sans-serif; background: va
   .main-header h1 { font-size: 14px; }
   .user-menu-info { display: none; } /* hemat ruang: sisakan avatar + panah saja */
   .user-menu-trigger { padding: 5px; }
-  .stats-row { grid-template-columns: repeat(3, 1fr); gap: 6px; }
-  .stat-card { padding: 6px; }
-  .stat-label { font-size: 8.5px; }
-  .stat-value { font-size: 14px; }
+  .stats-row { grid-template-columns: repeat(2, 1fr); gap: 8px; }
+  .stat-card { padding: 10px; flex-direction: row; align-items: center; }
+  .stat-label { font-size: 10px; }
+  .stat-value { font-size: 17px; }
   .tag-pill { font-size: 11px; padding: 3px 8px; }
   .attachment-row { padding: 5px 7px; font-size: 11.5px; }
   .no-surat-row { font-size: 10.5px; padding: 3px 10px; }
