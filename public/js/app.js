@@ -114,6 +114,16 @@ async function loadStats() {
   document.getElementById("statToday").textContent = totalToday;
   document.getElementById("statDocs").textContent = totalDocs;
   document.getElementById("statUpcoming").textContent = upcoming;
+
+  // Badge notifikasi lonceng: jumlah agenda HARI INI juga — otomatis balik ke 0
+  // tiap ganti hari karena dihitung ulang dari tanggal berjalan, bukan angka yang disimpan manual.
+  const badge = document.getElementById("notifBadge");
+  if (totalToday > 0) {
+    badge.textContent = totalToday > 99 ? "99+" : totalToday;
+    badge.classList.remove("hidden");
+  } else {
+    badge.classList.add("hidden");
+  }
 }
 
 // ---------- Bootstrap ----------
@@ -144,6 +154,14 @@ async function showApp() {
   document.getElementById("avatarInitial").textContent = (state.user.name || "?").charAt(0).toUpperCase();
 
   await refreshAgendaView();
+
+  // Cek berkala (tiap 20 detik) supaya badge notifikasi & angka statistik ikut
+  // update otomatis kalau ada agenda baru yang ditambahkan orang lain, tanpa
+  // perlu reload manual. Dipasang sekali saja walau showApp() sempat terpanggil ulang.
+  if (!state._statsPollingStarted) {
+    state._statsPollingStarted = true;
+    setInterval(loadStats, 20000);
+  }
 }
 
 // ---------- View mode ----------
