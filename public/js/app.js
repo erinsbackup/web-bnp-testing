@@ -365,13 +365,54 @@ function openPdfViewer(item, attachment) {
         <span class="pdf-viewer-title" title="${escapeHtml(attachment.name)}">📄 ${escapeHtml(attachment.name)}</span>
         <button class="ghost-btn">Tutup</button>
       </div>
-      <iframe class="pdf-viewer-frame" src="/api/attachment-view?agendaId=${item.id}&fileId=${attachment.id}" title="${escapeHtml(attachment.name)}"></iframe>
+      <div class="pdf-viewer-body" id="pdfViewerBody">
+        <p class="pdf-viewer-status">Memuat PDF...</p>
+      </div>
     </div>
   `;
   document.body.appendChild(backdrop);
   const close = () => backdrop.remove();
   backdrop.querySelector(".ghost-btn").onclick = close;
   backdrop.addEventListener("click", (e) => { if (e.target === backdrop) close(); });
+
+  renderPdfIntoViewer(`/api/attachment-view?agendaId=${item.id}&fileId=${attachment.id}`, backdrop.querySelector("#pdfViewerBody"));
+}
+
+// Render PDF pakai PDF.js (canvas) — supaya konsisten tampil langsung di semua
+// platform. Sebelumnya pakai <iframe> yang mengandalkan fitur bawaan browser,
+// dan Chrome di Android tidak punya PDF viewer bawaan untuk iframe (beda
+// dengan Safari iOS), jadi malah nyuruh download. Pakai PDF.js, hasilnya sama
+// di Android, iPhone, maupun desktop.
+async function renderPdfIntoViewer(url, container) {
+  try {
+    const res = await fetch(url, { credentials: "same-origin" });
+    if (!res.ok) throw new Error(`Gagal memuat file (${res.status})`);
+    const arrayBuffer = await res.arrayBuffer();
+
+    const pdf = await window.pdfjsLib.getDocument({ data: arrayBuffer }).promise;
+    container.innerHTML = "";
+
+    for (let pageNum = 1; pageNum <= pdf.numPages; pageNum++) {
+      const page = await pdf.getPage(pageNum);
+      const unscaledViewport = page.getViewport({ scale: 1 });
+      const targetWidth = container.clientWidth || 800;
+      const scale = targetWidth / unscaledViewport.width;
+      const viewport = page.getViewport({ scale });
+
+      const canvas = document.createElement("canvas");
+      canvas.className = "pdf-page-canvas";
+      canvas.width = viewport.width;
+      canvas.height = viewport.height;
+      container.appendChild(canvas);
+
+      await page.render({ canvasContext: canvas.getContext("2d"), viewport }).promise;
+    }
+  } catch (err) {
+    container.innerHTML = `
+      <p class="pdf-viewer-status">Gagal menampilkan PDF di sini (${escapeHtml(err.message)}).</p>
+      <a class="primary-btn pdf-fallback-link" href="${url}" target="_blank" rel="noopener">Buka PDF di tab baru</a>
+    `;
+  }
 }
 
 // ---------- Agenda modal (add/edit) ----------
@@ -520,7 +561,16 @@ document.getElementById("logoutBtn").addEventListener("click", async () => {
 document.getElementById("addAgendaBtn").addEventListener("click", () => openAgendaModal(null));
 document.getElementById("viewListBtn").addEventListener("click", () => switchViewMode("list"));
 document.getElementById("viewDailyBtn").addEventListener("click", () => switchViewMode("daily"));
-document.getElementById("jumpTodayBtn").addEventListener("click", () => scrollToTodayOrNearest("smooth"));
+document.getElementById("jumpTodayBtn").addEventListener("click", () => {
+  if (state.viewMode === "daily") {
+    // Di tampilan "Per Tanggal" tidak ada elemen grup-tanggal untuk di-scroll,
+    // jadi "Lompat ke Hari Ini" di sini artinya: pindah tanggal aktif ke hari ini.
+    state.currentDate = new Date();
+    loadAgenda();
+  } else {
+    scrollToTodayOrNearest("smooth");
+  }
+});
 
 document.getElementById("prevDay").addEventListener("click", () => {
   state.currentDate.setDate(state.currentDate.getDate() - 1);
