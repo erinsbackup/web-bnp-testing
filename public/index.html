@@ -32,10 +32,10 @@
     </div>
 
     <nav class="sidebar-nav">
-      <button id="viewListBtn" class="sidebar-nav-btn active">
+      <button id="viewListBtn" class="sidebar-nav-btn">
         <span class="nav-icon">📋</span> Semua Jadwal
       </button>
-      <button id="viewDailyBtn" class="sidebar-nav-btn">
+      <button id="viewDailyBtn" class="sidebar-nav-btn active">
         <span class="nav-icon">📆</span> Per Tanggal
       </button>
     </nav>
@@ -138,12 +138,12 @@
         </div>
       </div>
 
-      <div id="listViewWrap">
+      <div id="listViewWrap" class="hidden">
         <div id="agendaListContainer"></div>
         <p id="listEmptyState" class="empty-state hidden">Belum ada agenda sama sekali.</p>
       </div>
 
-      <div id="dailyViewWrap" class="hidden">
+      <div id="dailyViewWrap">
         <div class="date-nav">
           <button id="prevDay" class="ghost-btn">‹</button>
           <div id="dateLabel" class="date-label"></div>

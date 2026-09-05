@@ -1,7 +1,7 @@
 const state = {
   user: null,
   currentDate: new Date(),
-  viewMode: "list", // "list" = semua jadwal, "daily" = per tanggal
+  viewMode: "daily", // "list" = semua jadwal, "daily" = per tanggal — default saat login: per tanggal (hari ini)
   searchQuery: "",
   filterTags: [],
 };
