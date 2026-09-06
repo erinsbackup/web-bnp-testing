@@ -130,11 +130,13 @@ async function loadStats() {
 
   const todayItems = items.filter((i) => i.tanggal === todayStr);
   const totalToday = todayItems.length;
-  // Dihitung dari kapan FILE-nya di-upload (uploadedAt), bukan tanggal agendanya —
-  // jadi murni "berapa dokumen yang diunggah hari ini", bukan akumulasi dari awal.
+  // "Dokumen Terunggah" ikut TANGGAL YANG SEDANG DIBUKA di tampilan "Per Tanggal"
+  // (bukan selalu hari ini beneran) — di tampilan "Semua Jadwal" (tidak ada satu
+  // tanggal spesifik yang dipilih), pakai hari ini sebagai default.
+  const docsRefDateStr = state.viewMode === "daily" ? fmtDate(state.currentDate) : todayStr;
   const totalDocs = items.reduce((sum, i) => {
-    const uploadedToday = (i.attachments || []).filter((a) => a.uploadedAt && fmtDate(new Date(a.uploadedAt)) === todayStr);
-    return sum + uploadedToday.length;
+    const uploadedOnRefDate = (i.attachments || []).filter((a) => a.uploadedAt && fmtDate(new Date(a.uploadedAt)) === docsRefDateStr);
+    return sum + uploadedOnRefDate.length;
   }, 0);
   const upcoming = items.filter((i) => i.tanggal > todayStr && i.tanggal <= in7Str).length;
 
@@ -618,7 +620,7 @@ document.getElementById("jumpTodayBtn").addEventListener("click", () => {
     // Di tampilan "Per Tanggal" tidak ada elemen grup-tanggal untuk di-scroll,
     // jadi "Lompat ke Hari Ini" di sini artinya: pindah tanggal aktif ke hari ini.
     state.currentDate = new Date();
-    loadAgenda();
+    refreshAgendaView();
   } else {
     scrollToTodayOrNearest("smooth");
   }
@@ -626,15 +628,15 @@ document.getElementById("jumpTodayBtn").addEventListener("click", () => {
 
 document.getElementById("prevDay").addEventListener("click", () => {
   state.currentDate.setDate(state.currentDate.getDate() - 1);
-  loadAgenda();
+  refreshAgendaView(); // pakai ini (bukan loadAgenda() langsung) supaya statistik ikut dihitung ulang untuk tanggal barunya
 });
 document.getElementById("nextDay").addEventListener("click", () => {
   state.currentDate.setDate(state.currentDate.getDate() + 1);
-  loadAgenda();
+  refreshAgendaView();
 });
 document.getElementById("todayBtn").addEventListener("click", () => {
   state.currentDate = new Date();
-  loadAgenda();
+  refreshAgendaView();
 });
 
 // ---------- Sidebar buka/tutup ----------
