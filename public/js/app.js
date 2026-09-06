@@ -121,8 +121,10 @@ function filterItems(items) {
   }
   return result;
 }
-async function loadStats() {
-  const { items } = await api("/api/agenda");
+// Menghitung & menampilkan statistik dari data yang SUDAH di-fetch (tidak fetch ulang) —
+// dipisah dari loadStats() supaya tampilan "Semua Jadwal" bisa berbagi 1 kali fetch
+// yang sama untuk statistik & daftar agenda, bukan fetch 2x untuk hal yang sama.
+function computeAndRenderStats(items) {
   const todayStr = fmtDate(new Date());
   const in7 = new Date();
   in7.setDate(in7.getDate() + 7);
@@ -130,14 +132,20 @@ async function loadStats() {
 
   const todayItems = items.filter((i) => i.tanggal === todayStr);
   const totalToday = todayItems.length;
-  // "Dokumen Terunggah" ikut TANGGAL YANG SEDANG DIBUKA di tampilan "Per Tanggal"
-  // (bukan selalu hari ini beneran) — di tampilan "Semua Jadwal" (tidak ada satu
-  // tanggal spesifik yang dipilih), pakai hari ini sebagai default.
-  const docsRefDateStr = state.viewMode === "daily" ? fmtDate(state.currentDate) : todayStr;
-  const totalDocs = items.reduce((sum, i) => {
-    const uploadedOnRefDate = (i.attachments || []).filter((a) => a.uploadedAt && fmtDate(new Date(a.uploadedAt)) === docsRefDateStr);
-    return sum + uploadedOnRefDate.length;
-  }, 0);
+
+  // "Dokumen Terunggah": di tampilan "Per Tanggal" ikut tanggal yang sedang dibuka;
+  // di tampilan "Semua Jadwal" diakumulasi semua (tidak dibatasi tanggal manapun).
+  let totalDocs;
+  if (state.viewMode === "daily") {
+    const docsRefDateStr = fmtDate(state.currentDate);
+    totalDocs = items.reduce((sum, i) => {
+      const uploadedOnRefDate = (i.attachments || []).filter((a) => a.uploadedAt && fmtDate(new Date(a.uploadedAt)) === docsRefDateStr);
+      return sum + uploadedOnRefDate.length;
+    }, 0);
+  } else {
+    totalDocs = items.reduce((sum, i) => sum + (i.attachments || []).length, 0);
+  }
+
   const upcoming = items.filter((i) => i.tanggal > todayStr && i.tanggal <= in7Str).length;
 
   document.getElementById("statToday").textContent = totalToday;
@@ -160,6 +168,13 @@ async function loadStats() {
   } else {
     badge.classList.add("hidden");
   }
+}
+
+// Dipakai untuk polling berkala (setInterval) — fetch sendiri karena tidak selalu
+// dijalankan bersamaan dengan render daftar agenda.
+async function loadStats() {
+  const { items } = await api("/api/agenda");
+  computeAndRenderStats(items);
 }
 
 // ---------- Bootstrap ----------
@@ -201,9 +216,17 @@ async function showApp() {
 }
 
 // ---------- View mode ----------
-function refreshAgendaView() {
-  loadStats();
-  return state.viewMode === "list" ? loadAgendaList() : loadAgenda();
+async function refreshAgendaView() {
+  if (state.viewMode === "list") {
+    // 1x fetch dipakai bareng untuk statistik & daftar agenda — sebelumnya masing-masing
+    // fetch sendiri-sendiri padahal query-nya identik (optimasi: separuh jumlah request).
+    const { items } = await api("/api/agenda");
+    computeAndRenderStats(items);
+    renderAgendaList(items);
+  } else {
+    loadStats();
+    await loadAgenda();
+  }
 }
 
 function switchViewMode(mode) {
@@ -254,8 +277,7 @@ async function loadAgenda() {
 }
 
 // ---------- List view (semua jadwal, lalu & akan datang) ----------
-async function loadAgendaList() {
-  const { items: rawItems } = await api("/api/agenda");
+function renderAgendaList(rawItems) {
   const items = filterItems(rawItems);
   const emptyEl = document.getElementById("listEmptyState");
   const jumpBtn = document.getElementById("jumpTodayBtn");
@@ -747,9 +769,16 @@ function renderNotifPanelList() {
 })();
 
 // ---------- Search ----------
+// Di-debounce 300ms — supaya ngetik cepat tidak nembak request ke server di
+// setiap huruf yang diketik, cukup 1x request setelah berhenti mengetik sebentar.
+let searchDebounceTimer = null;
 document.getElementById("searchInput").addEventListener("input", (e) => {
-  state.searchQuery = e.target.value.trim().toLowerCase();
-  refreshAgendaView();
+  const value = e.target.value.trim().toLowerCase();
+  clearTimeout(searchDebounceTimer);
+  searchDebounceTimer = setTimeout(() => {
+    state.searchQuery = value;
+    refreshAgendaView();
+  }, 300);
 });
 
 boot();

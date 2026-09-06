@@ -52,7 +52,7 @@
   <div class="main-area">
     <header class="main-header">
       <div class="header-left">
-        <button class="sidebar-toggle-btn" id="sidebarToggleBtn" title="Buka/tutup menu">☰</button>
+        <button class="sidebar-toggle-btn" id="sidebarToggleBtn" title="Buka/tutup menu" aria-label="Buka/tutup menu sidebar">☰</button>
         <div>
           <h1 id="greetingText">Selamat datang</h1>
           <p id="todayDateText" class="header-date"></p>
@@ -60,7 +60,7 @@
       </div>
       <div class="header-right">
         <div class="notif-wrap">
-          <button class="icon-btn" id="notifBellBtn" title="Notifikasi">
+          <button class="icon-btn" id="notifBellBtn" title="Notifikasi" aria-label="Notifikasi agenda hari ini">
             🔔
             <span class="notif-badge hidden" id="notifBadge">0</span>
           </button>
@@ -118,7 +118,7 @@
         <button id="jumpTodayBtn" class="ghost-btn hidden">📅 Lompat ke Hari Ini</button>
         <div class="search-box">
           <span class="search-icon">🔍</span>
-          <input type="text" id="searchInput" placeholder="Cari agenda..." />
+          <input type="text" id="searchInput" placeholder="Cari agenda..." aria-label="Cari agenda" />
         </div>
         <div class="filter-wrap">
           <button class="ghost-btn" id="filterBtn">☰ Filter</button>
