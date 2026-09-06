@@ -311,6 +311,21 @@ body { margin: 0; font-family: "Segoe UI", system-ui, sans-serif; background: va
   border: 2px solid #fff;
 }
 
+.notif-wrap { position: relative; }
+.notif-panel {
+  position: absolute; top: calc(100% + 8px); left: 50%; transform: translateX(-50%);
+  background: #fff; border: 1px solid var(--border); border-radius: 12px;
+  box-shadow: 0 10px 26px rgba(15,23,42,0.14); padding: 12px; width: 300px; max-width: 88vw;
+  max-height: 360px; overflow-y: auto; z-index: 30;
+}
+.notif-panel-title { font-weight: 700; font-size: 13px; color: var(--blue-dark); margin-bottom: 8px; }
+.notif-item { display: flex; gap: 10px; padding: 9px 6px; border-bottom: 1px solid #f1f5f9; }
+.notif-item:last-child { border-bottom: none; }
+.notif-item-time { flex: 0 0 auto; font-weight: 700; color: var(--blue); font-size: 12.5px; min-width: 40px; }
+.notif-item-title { font-weight: 600; font-size: 13px; color: var(--text); }
+.notif-item-sub { font-size: 12px; color: var(--text-mute); margin-top: 1px; }
+.notif-empty { font-size: 13px; color: var(--text-mute); text-align: center; padding: 16px 0; }
+
 .user-menu { position: relative; }
 .user-menu-trigger {
   display: flex; align-items: center; gap: 8px; background: #fff; border: 1px solid var(--border);
@@ -415,4 +430,4 @@ body { margin: 0; font-family: "Segoe UI", system-ui, sans-serif; background: va
 }
 
 /* Dropdown/panel tidak boleh sampai keluar layar di HP kecil */
-.user-menu-panel, .filter-panel { max-width: 88vw; }
+.user-menu-panel, .filter-panel, .notif-panel { max-width: 88vw; }

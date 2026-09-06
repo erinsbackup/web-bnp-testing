@@ -83,6 +83,27 @@ function greetingWord() {
   if (h < 19) return "sore";
   return "malam";
 }
+
+// "Sudah dibaca" untuk badge notifikasi lonceng — disimpan per user & per tanggal,
+// jadi otomatis tidak nyangkut ke hari berikutnya (key-nya beda tiap hari).
+function notifSeenKey() {
+  const username = (state.user && state.user.username) || "guest";
+  return `notif_seen_${username}_${fmtDate(new Date())}`;
+}
+function getNotifSeenCount() {
+  try {
+    return Number(localStorage.getItem(notifSeenKey())) || 0;
+  } catch {
+    return 0;
+  }
+}
+function markNotifSeen(count) {
+  try {
+    localStorage.setItem(notifSeenKey(), String(count));
+  } catch {
+    /* localStorage tidak tersedia (mode privat dsb) — abaikan, badge tetap jalan normal cuma tidak "ingat" antar reload */
+  }
+}
 function filterItems(items) {
   let result = items;
   if (state.searchQuery) {
@@ -107,18 +128,31 @@ async function loadStats() {
   in7.setDate(in7.getDate() + 7);
   const in7Str = fmtDate(in7);
 
-  const totalToday = items.filter((i) => i.tanggal === todayStr).length;
-  const totalDocs = items.reduce((sum, i) => sum + (i.attachments || []).length, 0);
+  const todayItems = items.filter((i) => i.tanggal === todayStr);
+  const totalToday = todayItems.length;
+  // Dihitung dari kapan FILE-nya di-upload (uploadedAt), bukan tanggal agendanya —
+  // jadi murni "berapa dokumen yang diunggah hari ini", bukan akumulasi dari awal.
+  const totalDocs = items.reduce((sum, i) => {
+    const uploadedToday = (i.attachments || []).filter((a) => a.uploadedAt && fmtDate(new Date(a.uploadedAt)) === todayStr);
+    return sum + uploadedToday.length;
+  }, 0);
   const upcoming = items.filter((i) => i.tanggal > todayStr && i.tanggal <= in7Str).length;
 
   document.getElementById("statToday").textContent = totalToday;
   document.getElementById("statDocs").textContent = totalDocs;
   document.getElementById("statUpcoming").textContent = upcoming;
 
+  // Disimpan supaya panel preview lonceng tidak perlu fetch ulang saat diklik
+  state.todayItemsCache = todayItems;
+  state.lastTotalToday = totalToday;
+
   // Badge notifikasi lonceng: jumlah agenda HARI INI juga — otomatis balik ke 0
   // tiap ganti hari karena dihitung ulang dari tanggal berjalan, bukan angka yang disimpan manual.
+  // Hanya ditampilkan kalau jumlahnya LEBIH BANYAK dari yang terakhir "dibaca" (diklik) —
+  // begitu diklik, badge hilang; muncul lagi otomatis kalau ada agenda baru ditambahkan setelahnya.
   const badge = document.getElementById("notifBadge");
-  if (totalToday > 0) {
+  const seen = getNotifSeenCount();
+  if (totalToday > 0 && totalToday > seen) {
     badge.textContent = totalToday > 99 ? "99+" : totalToday;
     badge.classList.remove("hidden");
   } else {
@@ -607,6 +641,54 @@ document.getElementById("todayBtn").addEventListener("click", () => {
 document.getElementById("sidebarToggleBtn").addEventListener("click", () => {
   document.querySelector(".app-shell").classList.toggle("sidebar-collapsed");
 });
+
+// ---------- Notifikasi lonceng: preview agenda hari ini ----------
+function renderNotifPanelList() {
+  const list = document.getElementById("notifPanelList");
+  const items = state.todayItemsCache || [];
+  if (items.length === 0) {
+    list.innerHTML = `<p class="notif-empty">Tidak ada agenda untuk hari ini.</p>`;
+    return;
+  }
+  list.innerHTML = items
+    .map(
+      (i) => `
+      <div class="notif-item">
+        <span class="notif-item-time">${i.jam}</span>
+        <div>
+          <div class="notif-item-title">${escapeHtml(i.asalSurat)}</div>
+          <div class="notif-item-sub">${escapeHtml(i.keterangan)}</div>
+        </div>
+      </div>`
+    )
+    .join("");
+}
+
+(function setupNotifPanel() {
+  const wrap = document.querySelector(".notif-wrap");
+  const btn = document.getElementById("notifBellBtn");
+  const panel = document.getElementById("notifPanel");
+  function close() {
+    panel.classList.add("hidden");
+    document.removeEventListener("click", onOutside);
+  }
+  function open() {
+    renderNotifPanelList();
+    panel.classList.remove("hidden");
+    document.addEventListener("click", onOutside);
+    // Tandai sudah dibaca -> badge langsung hilang. Akan muncul lagi otomatis
+    // kalau nanti totalnya bertambah lagi (dicek ulang tiap loadStats()).
+    markNotifSeen(state.lastTotalToday || 0);
+    document.getElementById("notifBadge").classList.add("hidden");
+  }
+  function onOutside(e) {
+    if (!wrap.contains(e.target)) close();
+  }
+  btn.addEventListener("click", (e) => {
+    e.stopPropagation();
+    panel.classList.contains("hidden") ? open() : close();
+  });
+})();
 
 // ---------- User menu dropdown ----------
 (function setupUserMenu() {
