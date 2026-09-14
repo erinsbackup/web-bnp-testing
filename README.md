@@ -64,8 +64,7 @@ command** dikosongkan waktu setup awal.
 | `LISA_PASSWORD` | password akun Lisa (default `lisa123` kalau kosong) |
 | `AMIR_PASSWORD` | password akun Amir (default `amir123` kalau kosong) |
 | `JWT_SECRET` | string acak panjang, WAJIB diisi sendiri |
-| `GOOGLE_SERVICE_ACCOUNT_EMAIL` | opsional — lihat bagian "Sinkronisasi ke Google Sheets" |
-| `GOOGLE_PRIVATE_KEY` | opsional — lihat bagian "Sinkronisasi ke Google Sheets" |
+| `GOOGLE_SERVICE_ACCOUNT_JSON_BASE64` | opsional — lihat bagian "Sinkronisasi ke Google Sheets" |
 | `GOOGLE_SHEET_ID` | opsional — lihat bagian "Sinkronisasi ke Google Sheets" |
 
 Username tetap `lisa` dan `amir` (huruf kecil).
@@ -102,15 +101,30 @@ logs untuk keperluan debug, tidak mengganggu pengguna).
 6. Ambil **Sheet ID** dari URL spreadsheet-nya — bagian di antara
    `/d/` dan `/edit`:
    `https://docs.google.com/spreadsheets/d/`**`INI_SHEET_ID_NYA`**`/edit`
-7. Di Netlify → Site configuration → Environment variables, tambahkan:
-   - `GOOGLE_SERVICE_ACCOUNT_EMAIL` = isi dari `client_email` di file JSON
-   - `GOOGLE_PRIVATE_KEY` = isi dari `private_key` di file JSON (termasuk
-     baris `-----BEGIN PRIVATE KEY-----` sampai `-----END PRIVATE KEY-----`,
-     copy-paste apa adanya termasuk karakter `\n` di dalamnya)
+7. Ubah seluruh isi file JSON tadi jadi 1 baris teks base64 (supaya tidak
+   mungkin rusak formatnya waktu di-paste ke kotak teks Netlify). Caranya:
+   - **Windows (PowerShell)**: buka PowerShell di folder tempat file JSON
+     itu ada, jalankan (ganti `nama-file.json` sesuai nama file Anda):
+     ```
+     [Convert]::ToBase64String([IO.File]::ReadAllBytes("nama-file.json")) | Set-Clipboard
+     ```
+     Hasilnya langsung ter-copy ke clipboard (tidak perlu di-select manual).
+   - **Mac/Linux (Terminal)**:
+     ```
+     base64 -i nama-file.json | pbcopy
+     ```
+     (di Linux ganti `pbcopy` dengan `xclip -selection clipboard` kalau ada, atau tinggal `base64 -i nama-file.json` lalu copy manual hasilnya)
+8. Di Netlify → Site configuration → Environment variables, tambahkan:
+   - `GOOGLE_SERVICE_ACCOUNT_JSON_BASE64` = paste hasil base64 dari langkah 7
    - `GOOGLE_SHEET_ID` = Sheet ID dari langkah 6
-8. Trigger deploy ulang. Sheet bernama "Agenda" akan otomatis dibuat di
+9. Trigger deploy ulang. Sheet bernama "Agenda" akan otomatis dibuat di
    spreadsheet itu (dengan header kolom otomatis) begitu ada agenda pertama
    yang dibuat/diedit/diupload setelah setup ini aktif.
+
+Kalau muncul error di Function log seperti `DECODER routines::unsupported`
+atau `error:1E08010C`, itu tandanya `private_key` rusak formatnya — pastikan
+pakai cara base64 di atas (bukan copy-paste `private_key` mentah ke kotak
+teks), karena itu memang penyebab paling umum error ini.
 
 ## Struktur data
 

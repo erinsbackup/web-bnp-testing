@@ -7,19 +7,53 @@
 const SHEET_TITLE = "Agenda";
 const HEADER = ["ID", "Tanggal", "Jam", "Asal Surat", "Keterangan", "Disposisi", "No. Disposisi", "No. Surat", "Dokumen"];
 
+// Ambil kredensial service account. Cara yang DIREKOMENDASIKAN: satu env var
+// GOOGLE_SERVICE_ACCOUNT_JSON_BASE64 berisi seluruh file JSON key yang
+// di-encode base64 — ini jauh lebih aman dari corrupt newline dibanding
+// paste private_key mentah ke kotak teks Netlify (base64 cuma huruf/angka,
+// tidak mungkin rusak walau di-copy-paste lewat form web).
+// Cara lama (GOOGLE_SERVICE_ACCOUNT_EMAIL + GOOGLE_PRIVATE_KEY terpisah)
+// tetap didukung sebagai fallback untuk yang sudah terlanjur setup begitu.
+function getServiceAccountCredentials() {
+  const b64 = process.env.GOOGLE_SERVICE_ACCOUNT_JSON_BASE64;
+  if (b64) {
+    try {
+      const decoded = Buffer.from(b64.trim(), "base64").toString("utf-8");
+      const parsed = JSON.parse(decoded);
+      if (parsed.client_email && parsed.private_key) {
+        return { email: parsed.client_email, key: parsed.private_key };
+      }
+      console.error("[sheets] GOOGLE_SERVICE_ACCOUNT_JSON_BASE64 valid base64/JSON tapi tidak ada client_email/private_key di dalamnya");
+    } catch (err) {
+      console.error("[sheets] GOOGLE_SERVICE_ACCOUNT_JSON_BASE64 gagal di-decode:", err.message);
+    }
+    return null;
+  }
+
+  if (process.env.GOOGLE_SERVICE_ACCOUNT_EMAIL && process.env.GOOGLE_PRIVATE_KEY) {
+    return {
+      email: process.env.GOOGLE_SERVICE_ACCOUNT_EMAIL,
+      key: process.env.GOOGLE_PRIVATE_KEY.replace(/\\n/g, "\n"),
+    };
+  }
+
+  return null;
+}
+
 function isConfigured() {
-  return !!(process.env.GOOGLE_SERVICE_ACCOUNT_EMAIL && process.env.GOOGLE_PRIVATE_KEY && process.env.GOOGLE_SHEET_ID);
+  return !!(getServiceAccountCredentials() && process.env.GOOGLE_SHEET_ID);
 }
 
 async function getSheet() {
-  if (!isConfigured()) return null;
+  const creds = getServiceAccountCredentials();
+  if (!creds || !process.env.GOOGLE_SHEET_ID) return null;
 
   const { GoogleSpreadsheet } = require("google-spreadsheet");
   const { JWT } = require("google-auth-library");
 
   const auth = new JWT({
-    email: process.env.GOOGLE_SERVICE_ACCOUNT_EMAIL,
-    key: (process.env.GOOGLE_PRIVATE_KEY || "").replace(/\\n/g, "\n"),
+    email: creds.email,
+    key: creds.key,
     scopes: ["https://www.googleapis.com/auth/spreadsheets"],
   });
 
