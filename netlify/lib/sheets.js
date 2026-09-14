@@ -93,6 +93,10 @@ function rowValuesFromItem(item) {
 // create, edit, maupun setelah upload dokumen (supaya kolom Dokumen ikut update).
 async function upsertAgendaRow(item) {
   try {
+    if (!isConfigured()) {
+      console.warn("[sheets] Belum dikonfigurasi (cek GOOGLE_SERVICE_ACCOUNT_JSON_BASE64 dan GOOGLE_SHEET_ID di Environment Variables) — sinkronisasi dilewati.");
+      return;
+    }
     const sheet = await getSheet();
     if (!sheet) return;
 
@@ -106,6 +110,7 @@ async function upsertAgendaRow(item) {
     } else {
       await sheet.addRow(values);
     }
+    console.log(`[sheets] Baris agenda #${item.id} berhasil disinkron.`);
   } catch (err) {
     console.error("[sheets] Gagal sinkron ke Google Sheets:", err.message);
   }
@@ -113,6 +118,7 @@ async function upsertAgendaRow(item) {
 
 async function deleteAgendaRow(itemId) {
   try {
+    if (!isConfigured()) return;
     const sheet = await getSheet();
     if (!sheet) return;
 
