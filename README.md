@@ -64,8 +64,53 @@ command** dikosongkan waktu setup awal.
 | `LISA_PASSWORD` | password akun Lisa (default `lisa123` kalau kosong) |
 | `AMIR_PASSWORD` | password akun Amir (default `amir123` kalau kosong) |
 | `JWT_SECRET` | string acak panjang, WAJIB diisi sendiri |
+| `GOOGLE_SERVICE_ACCOUNT_EMAIL` | opsional — lihat bagian "Sinkronisasi ke Google Sheets" |
+| `GOOGLE_PRIVATE_KEY` | opsional — lihat bagian "Sinkronisasi ke Google Sheets" |
+| `GOOGLE_SHEET_ID` | opsional — lihat bagian "Sinkronisasi ke Google Sheets" |
 
 Username tetap `lisa` dan `amir` (huruf kecil).
+
+## Sinkronisasi ke Google Sheets (fitur baru)
+
+Setiap Lisa **membuat agenda**, **mengedit**, **menghapus**, atau **upload/hapus
+PDF**, perubahannya otomatis tersinkron ke satu baris di Google Sheets —
+kolomnya persis field yang Lisa isi: Tanggal, Jam, Asal Surat, Keterangan,
+Disposisi, No. Disposisi, No. Surat, dan Dokumen (nama file yang diupload).
+
+**Sifatnya opsional & aman** — kalau belum di-setup, fitur ini cuma diam-diam
+tidak aktif, TIDAK bikin aplikasi lain error. Begitu juga kalau nanti Google
+Sheets API sedang bermasalah, create/edit/upload agenda tetap berhasil
+normal — sinkronisasinya cuma gagal diam-diam (ke-log di Netlify Functions
+logs untuk keperluan debug, tidak mengganggu pengguna).
+
+### Cara setup
+
+1. Buka [Google Cloud Console](https://console.cloud.google.com/) → buat
+   project baru (atau pakai yang sudah ada).
+2. Aktifkan **Google Sheets API**: menu **APIs & Services → Library**, cari
+   "Google Sheets API", klik **Enable**.
+3. Buat **Service Account**: menu **APIs & Services → Credentials** → **Create
+   Credentials → Service Account** → isi nama bebas → Create → Done (tidak
+   perlu kasih role/akses tambahan apapun).
+4. Klik service account yang baru dibuat → tab **Keys** → **Add Key → Create
+   new key** → pilih **JSON** → download filenya. Di dalam file itu ada
+   `client_email` dan `private_key`, keduanya dipakai nanti.
+5. Buat Google Sheet baru (spreadsheet kosong biasa di sheets.google.com).
+   Klik **Share**, tempel `client_email` dari file JSON tadi, kasih akses
+   **Editor**, klik Send/Share (uncheck "Notify people" boleh, tidak masalah
+   kalau email itu bukan Gmail asli).
+6. Ambil **Sheet ID** dari URL spreadsheet-nya — bagian di antara
+   `/d/` dan `/edit`:
+   `https://docs.google.com/spreadsheets/d/`**`INI_SHEET_ID_NYA`**`/edit`
+7. Di Netlify → Site configuration → Environment variables, tambahkan:
+   - `GOOGLE_SERVICE_ACCOUNT_EMAIL` = isi dari `client_email` di file JSON
+   - `GOOGLE_PRIVATE_KEY` = isi dari `private_key` di file JSON (termasuk
+     baris `-----BEGIN PRIVATE KEY-----` sampai `-----END PRIVATE KEY-----`,
+     copy-paste apa adanya termasuk karakter `\n` di dalamnya)
+   - `GOOGLE_SHEET_ID` = Sheet ID dari langkah 6
+8. Trigger deploy ulang. Sheet bernama "Agenda" akan otomatis dibuat di
+   spreadsheet itu (dengan header kolom otomatis) begitu ada agenda pertama
+   yang dibuat/diedit/diupload setelah setup ini aktif.
 
 ## Struktur data
 

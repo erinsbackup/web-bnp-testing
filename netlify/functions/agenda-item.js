@@ -1,6 +1,7 @@
 const { connectLambda } = require("@netlify/blobs");
 const { requireUser } = require("../lib/auth");
 const { readState, writeState } = require("../lib/db");
+const { upsertAgendaRow, deleteAgendaRow } = require("../lib/sheets");
 
 const VALID_TAGS = [
   "Dipelajari/Dicermati",
@@ -71,6 +72,7 @@ exports.handler = async (event) => {
       if (body.noSurat !== undefined) item.noSurat = String(body.noSurat).trim();
       if (body.status && VALID_STATUS.includes(body.status)) item.status = body.status;
       await writeState(state);
+      await upsertAgendaRow(item); // sinkron perubahan ke Google Sheets juga
       return json(200, { item });
     }
 
@@ -78,6 +80,7 @@ exports.handler = async (event) => {
       if (user.role !== "sekretaris") return json(403, { error: "Hanya Sekretaris yang boleh menghapus agenda" });
       state.agenda = state.agenda.filter((a) => a.id !== id);
       await writeState(state);
+      await deleteAgendaRow(id); // hapus baris terkait di Google Sheets juga
       return json(200, { ok: true });
     }
 

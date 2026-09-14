@@ -1,6 +1,7 @@
 const { connectLambda } = require("@netlify/blobs");
 const { requireUser } = require("../lib/auth");
 const { readState, writeState } = require("../lib/db");
+const { upsertAgendaRow } = require("../lib/sheets");
 
 const VALID_TAGS = [
   "Dipelajari/Dicermati",
@@ -73,6 +74,7 @@ exports.handler = async (event) => {
       };
       state.agenda.push(item);
       await writeState(state);
+      await upsertAgendaRow(item); // sinkron ke Google Sheets (best-effort, diam-diam dilewati kalau belum di-setup)
       return json(201, { item });
     }
 

@@ -1,6 +1,7 @@
 const { getStore, connectLambda } = require("@netlify/blobs");
 const { requireUser } = require("../lib/auth");
 const { readState, writeState } = require("../lib/db");
+const { upsertAgendaRow } = require("../lib/sheets");
 
 function filesStore() {
   return getStore("pdf-files");
@@ -37,6 +38,7 @@ exports.handler = async (event) => {
     item.attachments = (item.attachments || []).filter((f) => f.id !== fileId);
     await writeState(state);
     await filesStore().delete(fileId);
+    await upsertAgendaRow(item); // kolom "Dokumen" di Google Sheets ikut ter-update
 
     return json(200, { ok: true });
   } catch (err) {

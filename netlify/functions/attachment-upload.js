@@ -3,6 +3,7 @@ const crypto = require("crypto");
 const { getStore, connectLambda } = require("@netlify/blobs");
 const { requireUser } = require("../lib/auth");
 const { readState, writeState } = require("../lib/db");
+const { upsertAgendaRow } = require("../lib/sheets");
 
 const MAX_SIZE = 4 * 1024 * 1024; // 4MB, aman di bawah limit payload function Netlify
 
@@ -87,6 +88,7 @@ exports.handler = async (event) => {
     };
     item.attachments.push(entry);
     await writeState(state);
+    await upsertAgendaRow(item); // kolom "Dokumen" di Google Sheets ikut ter-update
 
     return json(201, { attachment: entry, item });
   } catch (err) {
